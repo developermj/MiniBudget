@@ -1,0 +1,61 @@
+﻿@page "/accounts"
+@using Microsoft.AspNetCore.Components.WebAssembly.Authentication
+@using MiniBudget.Shared.Model
+@using System.Globalization
+@inject HttpClient Http
+
+<PageTitle>Accounts</PageTitle>
+
+<h1>Accounts</h1>
+
+@if (accounts is null)
+{
+	<p><em>Loading...</em></p>
+} 
+else
+{
+	<table class="table">
+		<thead>
+			<tr>
+				<th>Name</th>
+				<th>Balance</th>
+			</tr>
+		</thead>
+		<tbody>
+			@foreach (var account in accounts)
+			{
+				<tr>
+					<td>
+						<NavLink class="nav-link" href="@($"/accounts/{account.Id}")">
+							@account.Name
+						</NavLink>
+					</td>
+					<td>
+						<span class="@(account.Balance < 0 ? "negative" : "")">
+							@account.Balance.ToString("C", ci)
+						</span>
+					</td>
+				</tr>
+			}
+		</tbody>
+	</table>
+}
+
+@code {
+	private CultureInfo ci = new CultureInfo("en-us");
+
+	private Account[]? accounts;
+
+	protected override async Task OnInitializedAsync()
+	{
+		ci.NumberFormat.CurrencyNegativePattern = 0;
+		try
+		{
+			accounts = await Http.GetFromJsonAsync<Account[]>("api/Account");
+		}
+        catch (AccessTokenNotAvailableException exception)
+        {
+            exception.Redirect();
+        }
+	}
+}

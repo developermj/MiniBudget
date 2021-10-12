@@ -1,0 +1,167 @@
+﻿@page "/accounts/{accountId:int}/categories/{categoryId:int}"
+@using Microsoft.AspNetCore.Components.WebAssembly.Authentication
+@using MiniBudget.Shared.Model
+@using System.Globalization
+@inject HttpClient Http
+@inject NavigationManager NavigationManager
+
+<PageTitle>@pageTitle</PageTitle>
+
+<h1>@pageTitle</h1>
+
+<NavLink class="nav-link" href="@($"accounts/{AccountId}")">
+	<span class="oi oi-chevron-left"></span> Back to Categories
+</NavLink>
+
+@if (account is null || category is null)
+{
+	<p><em>Loading...</em></p>
+}
+else
+{
+	<table class="table">
+		<tr>
+			<td>
+				Balance
+			</td>
+			<td>
+				@if (NewAmount.HasValue)
+				{
+					<span class="@(category.Balance < 0 ? "negative" : "")" style="text-decoration:line-through">
+						@category.Balance.ToString("C", ci)
+					</span>
+					<span class="oi oi-arrow-right"></span>
+					<span class="@(NewAmount.Value < 0 ? "negative" : "")">
+						@NewAmount.Value.ToString("C", ci)
+					</span>
+				} else {
+					<span class="@(category.Balance < 0 ? "negative" : "")">
+						@category.Balance.ToString("C", ci)
+					</span>
+				}
+			</td>
+		</tr>
+		<tr>
+			<td>
+				Alter
+			</td>
+			<td>
+				<Addons>
+					<Addon AddonType="AddonType.Start">
+						<RadioGroup TValue="string" Name="AlterType" Buttons="true" CheckedValue="AlterType" CheckedValueChanged="AlterTypeChanged">
+							<Radio TValue="string" Value="@("add")">+</Radio>
+							<Radio TValue="string" Value="@("reduce")">-</Radio>
+							<Radio TValue="string" Value="@("set")">$</Radio>
+						</RadioGroup>
+					</Addon>
+					<Addon AddonType="AddonType.Body">
+						<NumericEdit @ref="test" Step=".01M" Decimals="2" Value="AlterAmount" Disabled="@(string.IsNullOrEmpty(AlterType))" ValueChanged="@((decimal? value) => AlterAmountChanged(value))" KeyPress="HandleTextKeyPress" />
+					</Addon>
+				</Addons>
+			</td>
+		</tr>
+		<tr>
+			<td colspan="2" style="text-align: right">
+				<Button Color="Color.Primary" Clicked="HandleDone">Done</Button>
+			</td>
+		</tr>
+	</table>
+}
+
+@code {
+	private CultureInfo ci = new CultureInfo("en-us");
+
+	[Parameter]
+	public int CategoryId { get; set; }
+
+	[Parameter]
+	public int AccountId { get; set; }
+
+	private Category? category;
+	private Account? account;
+	private Blazorise.NumericEdit<decimal?>? test;
+
+	private string pageTitle = "Edit";
+
+    public string? AlterType { get; set; }
+    public decimal? AlterAmount { get; set; }
+	public decimal? NewAmount { get; set; }
+
+	private async void HandleTextKeyPress(KeyboardEventArgs e)
+	{
+		if (e.Code == "Enter" || e.Code == "NumpadEnter")
+		{
+			await Submit();
+		}
+	}
+
+	private void AlterTypeChanged(string alterType)
+	{
+		AlterType = alterType;
+		test?.Focus();
+	}
+
+	private void AlterAmountChanged(decimal? amount)
+	{
+		AlterAmount = amount;
+		if (!amount.HasValue || amount == 0)
+		{
+			NewAmount = null;
+		}
+		else
+		{
+			NewAmount = AlterType switch
+			{
+				"set" => amount,
+				"add" => category!.Balance + amount,
+				"reduce" => category!.Balance - amount,
+				_ => throw new ArgumentOutOfRangeException($"{AlterType} is not a valid option")
+			};
+		}
+	}
+
+	private async Task Submit()
+	{
+		if (AlterType is not null && AlterAmount.HasValue)
+		{
+			var alterType = AlterType switch
+			{
+				"set" => AlterTypes.Set,
+				"reduce" => AlterTypes.Reduce,
+				"add" => AlterTypes.Add,
+				_ => throw new ArgumentOutOfRangeException($"{AlterType} is not a valid option")
+			};
+			var response = await Http.PutAsJsonAsync($"api/Category/{CategoryId}/AlterBalance", new BalanceAlter(alterType, AlterAmount.Value));
+		}
+		NavigationManager.NavigateTo($"accounts/{AccountId}");
+	}
+
+	private async void HandleDone()
+	{
+		await Submit();
+	}
+
+	protected override async Task OnInitializedAsync()
+	{
+		ci.NumberFormat.CurrencyNegativePattern = 0;
+		try
+		{
+			var categoryTask = Http.GetFromJsonAsync<Category>($"api/Category/{CategoryId}");
+			var accountTask = Http.GetFromJsonAsync<Account>($"api/Account/{AccountId}");
+			await Task.WhenAll(categoryTask, accountTask);
+
+			category = categoryTask.Result;
+			account = accountTask.Result;
+			if (category is null || account is null)
+			{
+				NavigationManager.NavigateTo($"accounts/{AccountId}");
+				return;
+			}
+			pageTitle = $"Edit {account.Name}/{category.Name}";
+		}
+        catch (AccessTokenNotAvailableException exception)
+        {
+            exception.Redirect();
+        }
+	}
+}

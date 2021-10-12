@@ -1,0 +1,79 @@
+﻿@page "/accounts/{accountId:int}"
+@using Microsoft.AspNetCore.Components.WebAssembly.Authentication
+@using MiniBudget.Shared.Model
+@using System.Globalization
+@inject HttpClient Http
+@inject NavigationManager NavigationManager
+
+<PageTitle>@pageTitle</PageTitle>
+
+<h1>@pageTitle</h1>
+
+<NavLink class="nav-link" href="accounts">
+	<span class="oi oi-chevron-left"></span> Back to Accounts
+</NavLink>
+
+@if (account is null || categories is null)
+{
+	<p><em>Loading...</em></p>
+}
+else
+{
+	<table class="table">
+		<thead>
+			<tr>
+				<th>Name</th>
+				<th>Balance</th>
+			</tr>
+		</thead>
+		<tbody>
+			@foreach (var category in categories)
+			{
+				<tr>
+					<td>
+						<NavLink class="nav-link" href="@($"/accounts/{AccountId}/categories/{category.Id}")">
+							@category.Name
+						</NavLink>
+					</td>
+					<td>
+						<span class="@(category.Balance < 0 ? "negative" : "")">
+							@category.Balance.ToString("C", ci)
+						</span>
+					</td>
+				</tr>
+			}
+		</tbody>
+	</table>
+}
+
+@code {
+	private CultureInfo ci = new CultureInfo("en-us");
+
+	[Parameter]
+	public int AccountId { get; set; }
+
+	private Account? account;
+	private Category[]? categories;
+
+	private string pageTitle = "Categories";
+
+	protected override async Task OnInitializedAsync()
+	{
+		ci.NumberFormat.CurrencyNegativePattern = 0;
+		try
+		{
+			account = await Http.GetFromJsonAsync<Account>($"api/Account/{AccountId}");
+			if (account is null)
+			{
+				NavigationManager.NavigateTo("accounts");
+				return;
+			}
+			pageTitle = $"{account.Name} Categories";
+			categories = await Http.GetFromJsonAsync<Category[]>($"api/Account/{AccountId}/Categories");
+		}
+        catch (AccessTokenNotAvailableException exception)
+        {
+            exception.Redirect();
+        }
+	}
+}
